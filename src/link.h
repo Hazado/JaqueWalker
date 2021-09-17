@@ -37,8 +37,11 @@ namespace FMS::Link {
 	 */
 	extern u8 connectionId;
 	
+	//Functions:
+	void giveWatts();
+	
 	void startTransfer(int first, bool editdata);
-	void startTransfer2();
+	
 
 	/**
 	 * \brief Prints information to the screen if a result wasn't successful.

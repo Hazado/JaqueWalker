@@ -37,7 +37,7 @@ export VERSTRING	:=	v$(VER_MAJOR).$(VER_MINOR).$(VER_PATCH)
 #     - icon.png
 #     - <libctru folder>/default_icon.png
 #---------------------------------------------------------------------------------
-TARGET		:=	fitmetersync
+TARGET		:=	JaqueWalker
 BUILD		:=	build
 SOURCES		:=	src
 DATA		:=	data
@@ -46,9 +46,9 @@ GRAPHICS	:=	gfx
 ROMFS		:=	romfs
 GFXBUILD	:=	$(ROMFS)/gfx
 
-APP_TITLE		:=  	Fit Meter Sync $(VERSTRING)
-APP_DESCRIPTION		:=	Syncs your steps with the Wii U Fit Meter and coins.
-APP_AUTHOR		:=	mrbob312 &  HenkKalkwater
+APP_TITLE		:=  	JaqueWalker $(VERSTRING)
+APP_DESCRIPTION	:=	Syncs 3DS with PokeWalker.
+APP_AUTHOR		:=	deosamox (Thanks to Dimitry, HenkKalkwater and mrbob312)
 
 IP_ADDRESS		:= $(file < ipaddress.txt)
 
