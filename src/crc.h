@@ -4,15 +4,10 @@
 #include <3ds.h>
 
 namespace FMS {
-	const int GP = 0x107;
-	const int DI = 0x7;
-
-	extern u8 crc8_table[256];     /* 8-bit table */
-	extern bool made_table;
-
-	void init_crc8();
-	void crc8(u8 *crc, u8 m);
-	u8 crc8_arr(u8* m, size_t size);
+	uint16_t commsPrvCrc(const void *data, uint8_t len, uint16_t crcStart);
+	uint16_t commsPrvChecksumPacket(const struct PokePacket *pkt, const void *data, uint8_t len);		//assumes pkt->crc == 0
+	void commsPrvChecksumPacketAndRecordSum(struct PokePacket *pkt, const void *data, uint8_t len);
+	bool commsPrvChecksumPacketAndCheck(struct PokePacket *pkt, const void *data, uint8_t len);
 }
 
 #endif //CRC_H

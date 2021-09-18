@@ -17,11 +17,14 @@
 
 #include "crc.h"
 #include "pcap.h"
+#include "pokepacket.h"
+
 typedef u8 uint8_t;
 
 using namespace std;
 
 namespace FMS::Link {
+		
 	/**
 	 * \brief Result Module that is used for results caused by the functions in this namespace.
 	 */
@@ -167,6 +170,10 @@ namespace FMS::Link {
 	Result blockSendPacket(std::array<u8, SIZE>& data, bool close=false) {
 		return blockSendPacket(data.data(), data.size(), close);
 	};
+	
+	//(deosamox) Send Packet
+	
+	Result sendPacket(struct PokePacket *pkt, u8* data, u32 length, bool close=false);
 	
 	/**
 	* Resets the connection ID.

@@ -2,28 +2,6 @@
 
 //Definitions by Dimitry
 
-#define POKEWALKER_DATA_MAX_LEN			128		//data per packet max, else we overflow pokewalker's buffer
-#define POKEWALKER_CRC_START			0x0002
-#define POKEWALKER_KEY					0xAA //According to dimitry "every byte sent is simply being XORed with 0xAA before being sent"
-
-#define DETAIL_DIR_TO_WALKER			0x01
-#define DETAIL_DIR_FROM_WALKER			0x02
-
-
-#define CMD_POKEWALKER_ADV				0xfc
-#define CMD_POKEWALKER_SYN				0xfa
-#define CMD_POKEWALKER_SYNACK			0xf8
-#define CMD_POKEWALKER_DIS_REQ			0x66
-#define CMD_POKEWALKER_DIS_RSP			0x68
-#define CMD_EEPROM_READ_REQ				0x0c
-#define CMD_EEPROM_READ_RSP				0x0e
-#define CMD_EEPROM_WRITE_REQ			0x0a
-#define CMD_EEPROM_WRITE_RSP			0x04
-#define CMD_EVENT_POKE_RXED				0xc2
-#define CMD_EVENT_ITEM_RXED				0xc4
-#define CMD_EVENT_ROUTE_RXED			0xc6
-#define CMD_WRITE						0x06
-
 namespace FMS::Link {
 	u8* buffer;
 	u8 connectionId = 0;
@@ -31,6 +9,7 @@ namespace FMS::Link {
 	PrintConsole linkConsole;
 	PrintConsole defaultConsole;
 	Pcap* pcap;
+	PokePacket pkt;
 
 	u8 secondShake[8] = { 0xA5, 0x00, 0x84, 0x01, 0x04, 0x04, 0x57, 0xd2 };
 	u8 firstShake[8] = { 0xA5, 0x00, 0x84, 0x01, 0x03, 0x04, 0x70, 0x31 };
@@ -43,12 +22,10 @@ namespace FMS::Link {
 	SwkbdButton button = SWKBD_BUTTON_NONE;
 	bool didit = false;
 	
-	//From Dimitry
-	uint8_t session[4];
-	
 	// Give Watts function:
 	
 	void giveWatts() {
+		/*
 		std::array<u8, 1> firstShake = {0x02};
 		std::array<u8, 3> secondShake = {0x00, 0x07, 0xF3};
 		std::array<u8, 6> thirdShake = {0x00, 0x10, 0xF4, 0x00, 0x00, 0x00};
@@ -56,11 +33,12 @@ namespace FMS::Link {
 		std::array<u8, 6> fifthShake = {0x00, 0x1e, 0xF4, 0x02, 0x00, 0x017};
 		//std::array<u8, 8> thirdShake = {0xA5, 0x00, 0x03, 0x01, 0x00, 0xF2, 0x00};
 		std::array<u8, 1> goodbye = {0x0F};
+		*/
 		const u32 TIMEOUT = 500000000;
 		
-		const size_t RECEIVE_SIZE = 256;
-		std::array<u8, RECEIVE_SIZE> receiveBuffer;
-		u32 receivedSize = 0;
+		//const size_t RECEIVE_SIZE = 256;
+		//std::array<u8, RECEIVE_SIZE> receiveBuffer;
+		//u32 receivedSize = 0;
 		
 		//Wait for Connection		
 		std::cout << ":: Connecting to PokeWalker..." << std::endl;
@@ -92,7 +70,7 @@ namespace FMS::Link {
 		*/
 		
 		//Close Connection
-		Link::blockSendPacket(goodbye, true);
+		//Link::blockSendPacket(goodbye, true);
 		Link::resetConnectionId();
 	}		
 
@@ -194,21 +172,24 @@ namespace FMS::Link {
 	void printBytes(u8* bytes, size_t size, bool sender) {
 		consoleSelect(&linkConsole);
 		if (sender) {
-			std::cout << "SENT: ";
+			std::cout << "SENT: " << "\e[31m"; //Red
 		} else {
-			std::cout << "RECV: ";
+			std::cout << "RECV: " << "\e[32m"; //Green
 			if (pcap->isOpen()) {
 				PcapRecord record(size, bytes);
 				pcap->addRecord(record);
 			}
 		}
 		
+		
+		/*
 		// Print bytes with a valid CRC in green
 		if (crc8_arr(bytes, size - 1) == bytes[size - 1]) {
 			std::cout << "\e[32m";
 		} else {
 			std::cout << "\e[31m";
 		}
+		*/
 		
 		for (u32 i = 0; i < size; i++){
 			std::cout << std::hex << std::setw(2) << std::setfill('0') << (bytes[i] & 0xFF) << " ";
@@ -340,6 +321,8 @@ namespace FMS::Link {
 		
 		u8 packetSize = 0;
 		
+		std::cout << "Received:" <<  received << std::endl;
+		
 		if (receivedSize == 0) {
 			std::cout << "   Timeout." << std::endl;
 			*length = 0;
@@ -363,9 +346,11 @@ namespace FMS::Link {
 			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NOT_FOUND);
 		}
 		
+		/*
 		if (crc8_arr(received, receivedSize - 1) != received[receivedSize - 1]) {
 			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NOT_FOUND);
 		}
+		*/
 		
 		if ((received[2] & 0x80) == 0x80 && received[1] != 0x00) {
 			// The other client would like to close the connection.
@@ -387,8 +372,11 @@ namespace FMS::Link {
 	}
 	
 	Result waitForConnection(u64 timeout) {
+		const size_t RECEIVE_SIZE = 256;
+		std::array<u8, RECEIVE_SIZE> receiveBuffer;
+		
 		Result ret = 0;
-		srand(0);
+		srand(time(0));	
 		uint32_t ourSeed = (((uint32_t)rand()) << 16) + rand();
 		
 		// Error if there is already an ongoing connection.
@@ -408,19 +396,33 @@ namespace FMS::Link {
 		if (R_FAILED(ret = blockReceiveData(received, 8, &receivedSize, timeout)))
 			return ret;
 		
-		//TODO: Send SYN AND DETAIL TO WALKER
-		
-		/*
 		pkt.cmd = CMD_POKEWALKER_SYN;
 		pkt.detail = DETAIL_DIR_TO_WALKER;
 		
-	*/
-	
 		//Create Session ID
 		
-		for (i = 0; i < 4; i++, ourSeed >>= 8)
-			session[i] = ourSeed;
-	
+		for (u32 i = 0; i < 4; i++, ourSeed >>= 8)
+			pkt.session[i] = ourSeed;
+		
+		//if (!commsPrvPacketTx(comms, &pkt,  NULL, 0))
+		//return false;
+		
+		//std::array<u8, 8> testHandshake = {pkt.cmd, pkt.detail, 0x00, 0x00, pkt.session[0], pkt.session[1], pkt.session[2], pkt.session[3]};
+		
+		//Error Handling
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::sendPacket(&pkt, NULL, 0, false);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		
 	/* 		
 		
 		if (!commsPrvPacketTx(comms, &pkt,  NULL, 0))
@@ -477,9 +479,15 @@ namespace FMS::Link {
 	}
 	
 	Result blockSendData(u8* data, u32 length) {
-		data[length - 1] = crc8_arr(data, length - 1);
+		const uint8_t *ptr = (const uint8_t*)data;
+		uint8_t txBuf[length], i;
+	
+		for (i = 0; i < length; i++)
+			txBuf[i] = ptr[i] ^ POKEWALKER_KEY;
+		
+		//data[length - 1] = crc8_arr(data, length - 1);
 		Result ret = 0;
-		if (R_FAILED(ret = IRU_StartSendTransfer(buffer, length))) return ret;
+		if (R_FAILED(ret = IRU_StartSendTransfer(txBuf, length))) return ret;
 		IRU_WaitSendTransfer();
 		
 		printBytes(data, length, true);
@@ -487,6 +495,10 @@ namespace FMS::Link {
 	}
 	
 	Result blockSendPacket(u8* data, u32 length, bool close) {
+		
+		//commsPrvChecksumPacketAndRecordSum(pkt, data, len); //CRC
+		//return commsPrvSendPiece(pkt, sizeof(struct PokePacket)) && commsPrvSendPiece(data, len) /*&& commsPrvSendCompleted(sp);*/;
+		
 		u8* packet;
 		u32 packetSize;
 		if (length > 0b00111111) {
@@ -505,14 +517,68 @@ namespace FMS::Link {
 		packet[0] = MAGIC;
 		packet[1] = connectionId;
 		if (close) packet[2] |= 0x80;
-		packet[packetSize - 1] = crc8_arr(packet, packetSize - 1);
+		//packet[packetSize - 1] = crc8_arr(packet, packetSize - 1);		
 		
+		//for (i = 0; i < now; i++)	txBuf[i] = ptr[i] ^ POKEWALKER_KEY;
 		Result res = blockSendData(packet, packetSize);
 		delete[] packet;
+		
+		return res;
+	}
+	
+	Result sendPacket(struct PokePacket *pkt, u8* data, u32 length, bool close) {
+		
+		commsPrvChecksumPacketAndRecordSum(pkt, data, length); //CRC
+		
+		//return commsPrvSendPiece(pkt, sizeof(struct PokePacket)) && commsPrvSendPiece(data, len) /*&& commsPrvSendCompleted(sp);*/;
+		
+		u8* packet;
+		u32 packetSize;
+		
+		packetSize = 8;
+		packet = new u8[packetSize];
+		
+		packet[0] = pkt->cmd;
+		packet[1] = pkt->detail;
+		packet[2] = pkt->crc[0];	
+		packet[3] = pkt->crc[1];
+		packet[4] = pkt->session[0];
+		packet[5] = pkt->session[1];
+		packet[6] = pkt->session[2];
+		packet[7] = pkt->session[3];
+		
+		/*
+		
+		if (length > 0b00111111) {
+			// We are using the large packet format.
+			packetSize = length + 5;
+			packet = new u8[packetSize];
+			packet[2] = 0x40;	
+			packet[3] = length;
+			memcpy(packet + 4, data, length);
+		} else {
+			packetSize = length + 4;
+			packet = new u8[packetSize];
+			packet[2] = length;
+			memcpy(packet + 3, data, length);
+		}
+		packet[0] = MAGIC;
+		packet[1] = connectionId;
+		if (close) packet[2] |= 0x80;
+		//packet[packetSize - 1] = crc8_arr(packet, packetSize - 1);
+		*/
+			
+		
+		//for (u32 i = 0; i < packetSize; i++) packet[i] = packet[i] ^ POKEWALKER_KEY;
+		
+		Result res = blockSendData(packet, packetSize) && blockSendData(data, length);
+		delete[] packet;
+		
 		return res;
 	}
 	
 	void resetConnectionId() {
 		connectionId = 0;
 	}
+
 }
