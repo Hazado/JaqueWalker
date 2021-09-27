@@ -142,7 +142,7 @@ namespace FMS::Link {
 	 * \brief Waits for a connection.
 	 * \returns Result describing whether the attempt was succesful.
 	*/
-	Result waitForConnection(u64 timeout=U64_MAX);
+	Result setConnection(u64 timeout=U64_MAX);
 	
 	/**
 	 * \brief Calculates checksum and sends data over IR. Will block the thread until the data has 
@@ -163,7 +163,7 @@ namespace FMS::Link {
 	 * \param[in] data The data to send.
 	 * \param[in] length The lenght of the data
 	 * \param[in] close If the connection should be closed after this packet.
-	 */
+	 
 	Result blockSendPacket(u8* data, u32 length, bool close=false);
 	
 	template<std::size_t SIZE>
@@ -171,9 +171,11 @@ namespace FMS::Link {
 		return blockSendPacket(data.data(), data.size(), close);
 	};
 	
-	//(deosamox) Send Packet
+	*/
 	
-	Result sendPacket(struct PokePacket *pkt, u8* data, u32 length, bool close=false);
+	//Send Packet
+	
+	Result sendPacket(struct PokePacket *pkt);
 	
 	/**
 	* Resets the connection ID.
