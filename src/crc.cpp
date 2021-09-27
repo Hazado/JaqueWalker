@@ -56,4 +56,20 @@ namespace FMS {
 		
 		return rxedCrc == commsPrvChecksumPacket(pkt, data, len);
 	}
+	
+void setPKTCRC(struct PokePacket *pkt){
+		uint16_t crc;
+		
+		pkt->crc[0] = 0;
+		pkt->crc[1] = 0;
+		
+		crc = setChecksumPacket(pkt);
+		
+		pkt->crc[0] = crc;
+		pkt->crc[1] = crc >> 8;
+	}
+	
+uint16_t setChecksumPacket(const struct PokePacket *pkt){
+		return commsPrvCrc(pkt, sizeof(struct PokePacket), POKEWALKER_CRC_START);
+	}
 }

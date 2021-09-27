@@ -42,7 +42,7 @@ namespace FMS::Link {
 	
 	//Functions:
 	void giveWatts();
-	
+	void emulatePW();
 	void startTransfer(int first, bool editdata);
 	
 

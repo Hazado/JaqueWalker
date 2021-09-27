@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
 	std::cout << "Press (START) anytime to exit." << std::endl;
 	std::cout <<  "--------------" << std::endl;
 		
-	std::string text = "Select desired action: \n (A) Try to Give Watts \n (Y) Record";
+	std::string text = "Select desired action: \n (A) Try to Give Watts \n (B) Try to Emulate PokeWalker \n (Y) Record";
 	std::cout << text << std::endl;
     
 	
@@ -103,6 +103,7 @@ int main(int argc, char** argv) {
         }
 		if (hidKeysDown() & KEY_B) {
 			//Link::startTransfer(1, false);
+			Link::emulatePW();
 			std::cout << text << std::endl;
 		}
 		if (hidKeysDown() & KEY_X) {

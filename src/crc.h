@@ -8,6 +8,9 @@ namespace FMS {
 	uint16_t commsPrvChecksumPacket(const struct PokePacket *pkt, const void *data, uint8_t len);		//assumes pkt->crc == 0
 	void commsPrvChecksumPacketAndRecordSum(struct PokePacket *pkt, const void *data, uint8_t len);
 	bool commsPrvChecksumPacketAndCheck(struct PokePacket *pkt, const void *data, uint8_t len);
+	
+	void setPKTCRC(struct PokePacket *pkt);
+	uint16_t setChecksumPacket(const struct PokePacket *pkt);
 }
 
 #endif //CRC_H

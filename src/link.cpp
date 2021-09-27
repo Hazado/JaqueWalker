@@ -10,6 +10,9 @@ namespace FMS::Link {
 	PrintConsole defaultConsole;
 	Pcap* pcap;
 	PokePacket pkt;
+	
+	Result resultGetStatus = 0xffffffff;
+	u32 StatusIR = 0;
 
 	u8 secondShake[8] = { 0xA5, 0x00, 0x84, 0x01, 0x04, 0x04, 0x57, 0xd2 };
 	u8 firstShake[8] = { 0xA5, 0x00, 0x84, 0x01, 0x03, 0x04, 0x70, 0x31 };
@@ -34,7 +37,7 @@ namespace FMS::Link {
 		//std::array<u8, 8> thirdShake = {0xA5, 0x00, 0x03, 0x01, 0x00, 0xF2, 0x00};
 		std::array<u8, 1> goodbye = {0x0F};
 		*/
-		const u32 TIMEOUT = 500000000;
+		const u32 TIMEOUT = 1000000000;
 		
 		//const size_t RECEIVE_SIZE = 256;
 		//std::array<u8, RECEIVE_SIZE> receiveBuffer;
@@ -42,7 +45,7 @@ namespace FMS::Link {
 		
 		//Wait for Connection		
 		std::cout << ":: Connecting to PokeWalker..." << std::endl;
-		Result res = Link::waitForConnection(1000 * TIMEOUT);
+		Result res = Link::waitForConnection(TIMEOUT * 1000);
 
 		//Error Handling
 		if (R_FAILED(res)) {
@@ -72,7 +75,37 @@ namespace FMS::Link {
 		//Close Connection
 		//Link::blockSendPacket(goodbye, true);
 		Link::resetConnectionId();
-	}		
+	}
+
+void emulatePW() {
+		u8 ADV[1] = { CMD_POKEWALKER_ADV };
+		//u8 SYNACK[8] = { CMD_POKEWALKER_SYNACK, DETAIL_DIR_FROM_WALKER, 0x83, 0x03, 0x00, 0x86, 0x09, 0x04 };
+		std::cout << ":: Connecting to DS..." << std::endl;
+		
+		const u32 TIMEOUT = 50;
+		
+		//Send ADV
+		std::cout << "Sending ADV..." << std::endl;
+		
+		blockSendData(ADV, sizeof(ADV));
+		
+		//Wait for Connection		
+		
+		Result res = Link::waitForConnection(TIMEOUT);
+
+		//Error Handling
+		if (R_FAILED(res)) {
+			Link::printIfError(res);
+			Link::resetConnectionId();
+			return;
+		}
+		
+		//If not error.
+		std::cout << "DS Game Found!" << std::endl;
+		
+		Link::resetConnectionId();
+	}
+	
 
 	//FitMeterSync Functions:
 
@@ -253,7 +286,7 @@ namespace FMS::Link {
 		
 		// The frequency of the Pokewalker is about 116 279,07 and it looks a lot like a Wii Fit U meter.
 		// Let's try that frequency, because you have to do something.
-		IRU_SetBitRate(3);
+		IRU_SetBitRate(0x3);
 		if (R_FAILED(ret = getRecvFinishedEvent(&recvFinishedEvent))) return ret;
 		return ret;
 	}
@@ -288,15 +321,28 @@ namespace FMS::Link {
 			IRU_WaitRecvTransfer(length);
 			return ret;
 		}
+		
+		std::cout << "Hi" << std::endl;
 
 		svcWaitSynchronization(recvFinishedEvent, timeout);
+		
+		std::cout << "This" << std::endl;
 		if (R_FAILED(ret = svcClearEvent(recvFinishedEvent))) return ret;
+		
+		std::cout << "is" << std::endl;
 		if (R_FAILED(ret = IRU_WaitRecvTransfer(length))) return ret;
+		
+		std::cout << "paquito." << std::endl;
+		
+		//----
+		
 		if (*length == 0) {
 			return ret;
 		}
+		std::cout << "Mr Paquito," << std::endl;
 		
 		std::copy(buffer, buffer + std::min((size_t) *length, size), data);
+		std::cout << "Salta" << std::endl;
 		
 		//TODO: I'm missing this CRC stuff:
 		
@@ -308,6 +354,7 @@ namespace FMS::Link {
 		
 		for (u32 i = 0; i < *length; i++)
 			data[i] ^= POKEWALKER_KEY;
+		std::cout << "Y baila." << std::endl;
 		
 		printBytes(data, (size_t) *length, false);
 
@@ -315,13 +362,15 @@ namespace FMS::Link {
 	}
 	
 	Result blockReceivePacket(u8* data, size_t size, u32* length, u64 timeout) {
-		u8 received[size];
+		u8 received[8];
 		u32 receivedSize = 0;
 		blockReceiveData(received, size, &receivedSize, timeout);
 		
 		u8 packetSize = 0;
 		
-		std::cout << "Received:" <<  received << std::endl;
+		std::fill(std::begin(received), std::end(received), 0x00);
+		
+		std::cout << "Received:" <<  std::hex << received[0] << std::endl;
 		
 		if (receivedSize == 0) {
 			std::cout << "   Timeout." << std::endl;
@@ -393,43 +442,48 @@ namespace FMS::Link {
 		//if (sizeof(adv) != commsPrvSerialRx(&adv, sizeof(adv), 0) || adv != CMD_POKEWALKER_ADV)
 		//return false;
 	
-		if (R_FAILED(ret = blockReceiveData(received, 8, &receivedSize, timeout)))
+		if (R_FAILED(ret = blockReceiveData(received, 8, &receivedSize, timeout))){
+			std::cout << "Failed to receive ADV data." << std::endl;
 			return ret;
+		}
 		
+		std::cout << "Debug: Data Received..." << std::endl;
+		
+		if (received[0] != CMD_POKEWALKER_ADV){
+			std::cout << "Received value is not ADV." << std::endl;
+			return ret;
+		}
+		
+		std::cout << "Debug: Received ADV. Sending SYN..." << std::endl;
+		
+		//Create Packet to send SYN
 		pkt.cmd = CMD_POKEWALKER_SYN;
 		pkt.detail = DETAIL_DIR_TO_WALKER;
 		
-		//Create Session ID
-		
+		//Create Session ID		
 		for (u32 i = 0; i < 4; i++, ourSeed >>= 8)
 			pkt.session[i] = ourSeed;
 		
-		//if (!commsPrvPacketTx(comms, &pkt,  NULL, 0))
-		//return false;
+		//Send SYN		
+		if (R_FAILED(ret = sendPacket(&pkt, NULL, 0, false))){
+			std::cout << "Failed to send SYN." << std::endl;
+			return ret;
+		}
 		
-		//std::array<u8, 8> testHandshake = {pkt.cmd, pkt.detail, 0x00, 0x00, pkt.session[0], pkt.session[1], pkt.session[2], pkt.session[3]};
+		std::cout << "SYN sent. Receiving SYNACK" << std::endl;
 		
-		//Error Handling
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::sendPacket(&pkt, NULL, 0, false);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
-		Link::blockReceiveData(received, 8, &receivedSize, timeout);
+		std::fill(std::begin(received), std::end(received), 0x00);
+		
+		//Receive SYNACK
+		if (R_FAILED(ret = blockReceivePacket(receiveBuffer, &receivedSize, timeout))){
+			std::cout << "Failed to receive SYNACK data." << std::endl;
+			return ret;
+		}
+		
+		std::cout << "Debug: Data Received..." << std::endl;
+		std::cout << "Is this SYNACK?" << received[0] << std::endl;
 		
 	/* 		
-		
-		if (!commsPrvPacketTx(comms, &pkt,  NULL, 0))
-			return false;
-		
-		
-		
 		if (commsPrvPacketRxLL(&pkt, NULL, 0) != 0 || pkt.cmd != CMD_POKEWALKER_SYNACK || pkt.detail != DETAIL_DIR_FROM_WALKER || !commsPrvChecksumPacketAndCheck(&pkt, NULL, 0))
 			return false;
 		
@@ -440,39 +494,6 @@ namespace FMS::Link {
 		
 		comms->connected = true;*/
 		
-		//Removing this stuff from fitmetersync for now:
-		
-		/*
-		if (receivedSize == 0) {
-			std::cout << "Debug: receivedSize == 0" << std::endl;
-			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NO_DATA);
-		}
-		
-		if (receivedSize != 8) {
-			std::cout << "Debug: receivedSize != 8" << std::endl;
-			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NOT_FOUND);
-		}
-		
-		if (received[0] != MAGIC && received[1] != 00) {
-			std::cout << "Debug: received[0] != MAGIC && received[1] != 00" << std::endl;
-			
-			// This probably wasn't meant for us.
-			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NOT_FOUND);
-		}
-		
-		if (crc8_arr(received, 7) != received[7]) {
-			std::cout << "Debug: crc8_arr(received, 7) != received[7]" << std::endl;
-			
-			// Checksum doesn't match. Probably an invalid packet.
-			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NOT_FOUND);
-		}
-		
-		if (received[3] != 0x01 || received[4] != 0x03 || received[5] != 0x04) {
-			std::cout << "Debug: received[3] != 0x01 || received[4] != 0x03 || received[5] != 0x04" << std::endl;
-					
-			// There is no intention to start a connection.
-			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NO_DATA);
-		} */
 		
 		connectionId = received[6];
 		return ret;
@@ -487,10 +508,20 @@ namespace FMS::Link {
 		
 		//data[length - 1] = crc8_arr(data, length - 1);
 		Result ret = 0;
+		/*
 		if (R_FAILED(ret = IRU_StartSendTransfer(txBuf, length))) return ret;
 		IRU_WaitSendTransfer();
+		*/
 		
+		if (R_FAILED(ret = iruSendData(txBuf, length, 0x1))) return ret; //Just send the got darn data.
+		
+		//u8 *blast = calloc(0x400,0x1); //REC_SIZE = 0x400
+		//blast = memcpy(blast, recordedIR + (0x400 * 0), 0x400);
+		//resultTransferIR = iruSendData(txBuf, length, 0x0); //Just send the got darn data.
+		//printMemory(blast,0x400,10, true); //might be dangerous?
+							
 		printBytes(data, length, true);
+		//free(txBuf);
 		return ret;
 	}
 	
@@ -528,7 +559,9 @@ namespace FMS::Link {
 	
 	Result sendPacket(struct PokePacket *pkt, u8* data, u32 length, bool close) {
 		
-		commsPrvChecksumPacketAndRecordSum(pkt, data, length); //CRC
+		//commsPrvChecksumPacketAndRecordSum(pkt, data, length); //CRC
+		
+		setPKTCRC(pkt);
 		
 		//return commsPrvSendPiece(pkt, sizeof(struct PokePacket)) && commsPrvSendPiece(data, len) /*&& commsPrvSendCompleted(sp);*/;
 		
@@ -547,31 +580,9 @@ namespace FMS::Link {
 		packet[6] = pkt->session[2];
 		packet[7] = pkt->session[3];
 		
-		/*
-		
-		if (length > 0b00111111) {
-			// We are using the large packet format.
-			packetSize = length + 5;
-			packet = new u8[packetSize];
-			packet[2] = 0x40;	
-			packet[3] = length;
-			memcpy(packet + 4, data, length);
-		} else {
-			packetSize = length + 4;
-			packet = new u8[packetSize];
-			packet[2] = length;
-			memcpy(packet + 3, data, length);
-		}
-		packet[0] = MAGIC;
-		packet[1] = connectionId;
-		if (close) packet[2] |= 0x80;
-		//packet[packetSize - 1] = crc8_arr(packet, packetSize - 1);
-		*/
-			
-		
 		//for (u32 i = 0; i < packetSize; i++) packet[i] = packet[i] ^ POKEWALKER_KEY;
 		
-		Result res = blockSendData(packet, packetSize) && blockSendData(data, length);
+		Result res = blockSendData(packet, packetSize); // && blockSendData(data, length);
 		delete[] packet;
 		
 		return res;
