@@ -20,7 +20,7 @@ namespace FMS::Link {
 	//Give Watts function:
 	
 	void giveWatts() {
-		const u32 TIMEOUT = 184.32 * 1000000llu;
+		const u32 TIMEOUT = 50 * 1000000llu;
 		
 		//Wait for Connection		
 		std::cout << ":: Connecting to PokeWalker..." << std::endl;
@@ -46,7 +46,7 @@ namespace FMS::Link {
 		//u8 SYNACK[8] = { CMD_POKEWALKER_SYNACK, DETAIL_DIR_FROM_WALKER, 0x83, 0x03, 0x00, 0x86, 0x09, 0x04 };
 		std::cout << ":: Connecting to DS..." << std::endl;
 		
-		const u32 TIMEOUT = 184.32 * 1000000llu;
+		const u32 TIMEOUT = 50 * 1000000llu;
 		
 		//Send ADV
 		std::cout << "Sending ADV..." << std::endl;
@@ -153,7 +153,7 @@ namespace FMS::Link {
 	Result blockReceiveData(u8* data, size_t size, u32* length, u64 timeout) {
 		Result ret = 0;
 		
-		if (R_FAILED(ret = IRU_StartRecvTransfer(BUFFER_SIZE, 0))) { 
+		/*if (R_FAILED(ret = IRU_StartRecvTransfer(BUFFER_SIZE, 0))) { 
 			std::cout << "StartRecvTransfer failed." << std::endl;
 			IRU_WaitRecvTransfer(length);
 			return ret;
@@ -171,11 +171,13 @@ namespace FMS::Link {
 		
 		//TODO: I'm missing this CRC stuff:
 		
-		/*if (dst[0] >= 0xfe) {		//no packet begins with 0x55 or 0x54
+		if (dst[0] >= 0xfe) {		//no packet begins with 0x55 or 0x54
 		memmove(dst + 0, dst + 1, expectedLen - 1);
 		(void)iruRecvData(dst + expectedLen - 1, 1, 0, 0, 0);	//crc will tell if it happened
 		}
 		*/
+        
+        ret = iruRecvData(data, size, 0, length, true);
 		
 		for (u32 i = 0; i < *length; i++)
 			data[i] ^= POKEWALKER_KEY;
@@ -204,13 +206,13 @@ namespace FMS::Link {
 			return MAKERESULT(RL_INFO, RS_NOP, RM_LINK, RD_TIMEOUT);
 		}
 		
-		/*if (receivedSize < 4) {
+		if (receivedSize < 4) {
 			// We need at least 4 bytes: Magic number, ConnectionID, Flags/size and a CRC-8.
 			*length = 0;
 			// Return error if no data was received.
 			std::cout << "   Received too few bytes" << std::endl;
 			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NO_DATA);
-		}*/
+		}
 		
 		if (received[0] != MAGIC) {
 			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NOT_FOUND);
@@ -263,7 +265,7 @@ namespace FMS::Link {
 			return MAKERESULT(RL_STATUS, RS_INVALIDSTATE, RM_LINK, RD_ALREADY_EXISTS);
 		}
 		
-		if (R_FAILED(ret = blockReceiveData(received, 8, &receivedSize, timeout))){
+		if (R_FAILED(ret = blockReceiveData(received, 8, &receivedSize, 10 * timeout))){
 			std::cout << "Failed to receive ADV data." << std::endl;
 			return ret;
 		}
@@ -296,7 +298,7 @@ namespace FMS::Link {
 		std::cout << "SYN sent. Receiving SYNACK" << std::endl;
 		
 		//Receive SYNACK
-		if (R_FAILED(ret = blockReceivePacket(receiveBuffer, &receivedSize, timeout))){
+		if (R_FAILED(ret = blockReceiveData(received, 8 + POKEWALKER_DATA_MAX_LEN, &receivedSize, timeout))){
 			std::cout << "Failed to receive SYNACK data." << std::endl;
 			return ret;
 		}
@@ -330,27 +332,21 @@ namespace FMS::Link {
 	
 		for (i = 0; i < length; i++)
 			txBuf[i] = ptr[i] ^ POKEWALKER_KEY;
-		
-		Result ret = 0;
         
         std::cout << "txBuf: " << txBuf << std::endl;
         printBytes(txBuf, length, true);
 		
-		if (R_FAILED(ret = iruSendData(txBuf, length, 0x1))) return ret;
-		
-		printBytes(data, length, true);
+		Result ret = iruSendData(txBuf, length, 0x1);
 
 		return ret;
 	}
 	
 	Result sendPacket(struct PokePacket *pkt, u64 timeout) {
         std::cout << "sendPacket:" << std::endl;
-        Result ret = 0;
         
-		u8 packetSize = 8;
-		u8* packet = new u8[packetSize];
+		u8* packet = new u8[8];
         
-        commsPrvChecksumPacketAndRecordSum(pkt, packet, packetSize);
+        commsPrvChecksumPacketAndRecordSum(pkt, packet, sizeof(packet));
 		
 		packet[0] = pkt->cmd;
 		packet[1] = pkt->detail;
@@ -362,12 +358,12 @@ namespace FMS::Link {
 		packet[7] = pkt->session[3];
         
 		
-		Result res = blockSendData(packet, packetSize); // && blockSendData(data, length);
-		delete[] packet;
+		Result res = blockSendData(packet, sizeof(packet)); // && blockSendData(data, length);
+		/*delete[] packet;
         
  		svcWaitSynchronization(recvFinishedEvent, timeout);
 		
-		if (R_FAILED(ret = svcClearEvent(recvFinishedEvent))) return ret;
+		if (R_FAILED(ret = svcClearEvent(recvFinishedEvent))) return ret;*/
 		
 		return res;
 	}
