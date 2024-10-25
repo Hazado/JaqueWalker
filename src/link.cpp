@@ -1,4 +1,5 @@
 #include "link.h"
+#include <array>
 
 //Definitions by Dimitry
 
@@ -19,11 +20,11 @@ namespace FMS::Link {
 	//Give Watts function:
 	
 	void giveWatts() {
-		const u32 TIMEOUT = 1000000000;
+		const u32 TIMEOUT = 184.32 * 1000000llu;
 		
 		//Wait for Connection		
 		std::cout << ":: Connecting to PokeWalker..." << std::endl;
-		Result res = setConnection(TIMEOUT * 1000);
+		Result res = setConnection(TIMEOUT);
 
 		//Error Handling
 		if (R_FAILED(res)) {
@@ -45,7 +46,7 @@ namespace FMS::Link {
 		//u8 SYNACK[8] = { CMD_POKEWALKER_SYNACK, DETAIL_DIR_FROM_WALKER, 0x83, 0x03, 0x00, 0x86, 0x09, 0x04 };
 		std::cout << ":: Connecting to DS..." << std::endl;
 		
-		const u32 TIMEOUT = 50;
+		const u32 TIMEOUT = 184.32 * 1000000llu;
 		
 		//Send ADV
 		std::cout << "Sending ADV..." << std::endl;
@@ -191,9 +192,11 @@ namespace FMS::Link {
 		
 		u8 packetSize = 0;
 		
-		std::fill(std::begin(received), std::end(received), 0x00);
-		
-		std::cout << "Received:" <<  std::hex << received[0] << std::endl;
+		std::cout << "Received:" <<  received[0] << std::endl;
+        printBytes(received, receivedSize, false);
+        std::cout << "ReceivedSize:" <<  receivedSize << std::endl;
+
+        //std::fill(std::begin(received), std::end(received), 0x00);
 		
 		if (receivedSize == 0) {
 			std::cout << "   Timeout." << std::endl;
@@ -201,13 +204,13 @@ namespace FMS::Link {
 			return MAKERESULT(RL_INFO, RS_NOP, RM_LINK, RD_TIMEOUT);
 		}
 		
-		if (receivedSize < 4) {
+		/*if (receivedSize < 4) {
 			// We need at least 4 bytes: Magic number, ConnectionID, Flags/size and a CRC-8.
 			*length = 0;
 			// Return error if no data was received.
 			std::cout << "   Received too few bytes" << std::endl;
 			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NO_DATA);
-		}
+		}*/
 		
 		if (received[0] != MAGIC) {
 			return MAKERESULT(RL_STATUS, RS_NOP, RM_LINK, RD_NOT_FOUND);
@@ -244,7 +247,8 @@ namespace FMS::Link {
 	}
 	
 	Result setConnection(u64 timeout) {
-		std::array<u8, POKEWALKER_DATA_MAX_LEN> receiveBuffer;
+		std::array<u8, sizeof(struct PokePacket) + POKEWALKER_DATA_MAX_LEN> receiveBuffer;
+        std::fill(std::begin(receiveBuffer), std::end(receiveBuffer), 0x00);
 		
 		Result ret = 0;	
 		srand(time(0));	
@@ -270,6 +274,8 @@ namespace FMS::Link {
 			std::cout << "Received value is not ADV." << std::endl;
 			return ret;
 		}
+        std::fill(std::begin(received), std::end(received), 0x00);
+        receivedSize = 0;
 		
 		std::cout << "Debug: Received ADV. Sending SYN..." << std::endl;
 		
@@ -282,14 +288,12 @@ namespace FMS::Link {
 			pkt.session[i] = ourSeed;
 		
 		//Send SYN		
-		if (R_FAILED(ret = sendPacket(&pkt))){
+		if (R_FAILED(ret = sendPacket(&pkt, timeout))){
 			std::cout << "Failed to send SYN." << std::endl;
 			return ret;
 		}
 		
 		std::cout << "SYN sent. Receiving SYNACK" << std::endl;
-		
-		std::fill(std::begin(receiveBuffer), std::end(receiveBuffer), 0x00);
 		
 		//Receive SYNACK
 		if (R_FAILED(ret = blockReceivePacket(receiveBuffer, &receivedSize, timeout))){
@@ -298,7 +302,7 @@ namespace FMS::Link {
 		}
 		
 		std::cout << "Debug: Data Received..." << std::endl;
-		std::cout << "Is this SYNACK?" << receiveBuffer[0] << std::endl;
+		std::cout << "Is this SYNACK?" << std::hex << receiveBuffer[0] << std::endl;
 		
 		/* 		
 		if (commsPrvPacketRxLL(&pkt, NULL, 0) != 0 || pkt.cmd != CMD_POKEWALKER_SYNACK || pkt.detail != DETAIL_DIR_FROM_WALKER || !commsPrvChecksumPacketAndCheck(&pkt, NULL, 0))
@@ -319,6 +323,8 @@ namespace FMS::Link {
 	}
 	
 	Result blockSendData(u8* data, u32 length) {
+        std::cout << "blockSendData:" << std::endl;
+        printBytes(data, length, true);
 		const uint8_t *ptr = (const uint8_t*)data;
 		uint8_t txBuf[length], i;
 	
@@ -326,6 +332,9 @@ namespace FMS::Link {
 			txBuf[i] = ptr[i] ^ POKEWALKER_KEY;
 		
 		Result ret = 0;
+        
+        std::cout << "txBuf: " << txBuf << std::endl;
+        printBytes(txBuf, length, true);
 		
 		if (R_FAILED(ret = iruSendData(txBuf, length, 0x1))) return ret;
 		
@@ -334,12 +343,14 @@ namespace FMS::Link {
 		return ret;
 	}
 	
-	Result sendPacket(struct PokePacket *pkt) {
-		
-		setPacketCRC(pkt);
-		
+	Result sendPacket(struct PokePacket *pkt, u64 timeout) {
+        std::cout << "sendPacket:" << std::endl;
+        Result ret = 0;
+        
 		u8 packetSize = 8;
 		u8* packet = new u8[packetSize];
+        
+        commsPrvChecksumPacketAndRecordSum(pkt, packet, packetSize);
 		
 		packet[0] = pkt->cmd;
 		packet[1] = pkt->detail;
@@ -349,9 +360,14 @@ namespace FMS::Link {
 		packet[5] = pkt->session[1];
 		packet[6] = pkt->session[2];
 		packet[7] = pkt->session[3];
+        
 		
 		Result res = blockSendData(packet, packetSize); // && blockSendData(data, length);
 		delete[] packet;
+        
+ 		svcWaitSynchronization(recvFinishedEvent, timeout);
+		
+		if (R_FAILED(ret = svcClearEvent(recvFinishedEvent))) return ret;
 		
 		return res;
 	}

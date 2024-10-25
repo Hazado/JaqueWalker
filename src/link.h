@@ -175,7 +175,7 @@ namespace FMS::Link {
 	
 	//Send Packet
 	
-	Result sendPacket(struct PokePacket *pkt);
+	Result sendPacket(struct PokePacket *pkt, u64 timeout=U64_MAX);
 	
 	/**
 	* Resets the connection ID.
